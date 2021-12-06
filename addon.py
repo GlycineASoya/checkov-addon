@@ -1,11 +1,14 @@
 import os
 from types import resolve_bases
 from typing import Dict, List
+from numpy import e
 import requests
 from bs4 import BeautifulSoup
 import json
 from requests.models import MissingSchema
-import json2html
+from json2xml import json2xml
+import pandas as pd
+from pretty_html_table import build_table
 
 def findText(content: str, element: str, attributes: Dict) -> str:
     result = BeautifulSoup(content, 'html.parser').find(element, attrs=attributes).text
@@ -44,11 +47,11 @@ def getPageContent(urlPage: str) -> str:
 def getCheckInfo(urlPage: str) -> Dict:
     content = getPageContent(urlPage)
     checkInfo = {}
-    checkInfo[getCheckovID(content)] = [
-        {"description": getErrorDescription(content)},
-        {"severity": getSeverity(content)},
-        {"correctCode": getCorrectCode(content)}
-    ]
+    checkInfo[getCheckovID(content)] = {
+        'description': getErrorDescription(content),
+        'severity': getSeverity(content),
+        'correctCode': getCorrectCode(content).replace('\\n','')
+    }
     return checkInfo
 
 def openJsonFile(file: str):
@@ -66,15 +69,15 @@ def getErrorCheckList(file: str) -> Dict:
     try:
         data = openJsonFile(file)
         for failedCheck in data['results']['failed_checks']:
-            temp[failedCheck['check_id']]=[
-                {'check_id': failedCheck['check_id']},
-                {'check_name': failedCheck['check_name']},
-                {'check_result': failedCheck['check_result']},
-                {'file_path': failedCheck['file_path']},
-                {'file_line_range': failedCheck['file_line_range']},
-                {'resource': failedCheck['resource']}, # resource name
-                {'guideline': failedCheck['guideline']}
-            ]
+            temp[failedCheck['check_id']]={
+                'check_id':         failedCheck['check_id'],
+                'check_name':       failedCheck['check_name'],
+                'evaluated_keys':   '\n'.join(failedCheck['check_result']['evaluated_keys']),
+                'file_path':        failedCheck['file_path'],
+                'file_line_range':  failedCheck['file_line_range'],
+                'resource':         failedCheck['resource'], # resource name
+                'guideline':        failedCheck['guideline']
+            }
             if checkInfo is None:
                 checkInfo = temp
             else:
@@ -85,15 +88,50 @@ def getErrorCheckList(file: str) -> Dict:
 
 def extendErrorCheckList(errorCheckList: Dict) -> Dict:
     for errorCheckID, errorCheckDetailList in errorCheckList.items():
-        next(iter([errorCheckList[errorCheckID].extend(getCheckInfo(detailValue)[errorCheckID]) for errorCheckDetail in errorCheckDetailList for detailKey, detailValue in errorCheckDetail.items() if detailKey == 'guideline']), None)
+        guidlineDetails = getCheckInfo(errorCheckDetailList['guideline'])[errorCheckID]
+        errorCheckList[errorCheckID].update(guidlineDetails)
     return errorCheckList
 
 def printToCliAsJson(errorCheckList: Dict):
     print(json.dumps(obj=errorCheckList, indent=4))
 
-def exportToXml(file: str, errorCheckList: Dict):
-    json2html.convert(json = input)
+def exportToHtmlTable(file: str, errorCheckList: Dict):
+    html_string = '''
+        <html>
+        <head><title>Failed Checkov Checks</title></head>
+        <link rel="stylesheet" type="text/css" href="df_style.css"/>
+        <body>
+            {table}
+        </body>
+        </html>
+        '''
 
+    df = pd.DataFrame.from_dict({key: errorCheckList[key]
+                                  for key in errorCheckList.keys()
+                                  })
+    pd.set_option('colheader_justify', 'center')
+    df = df.fillna(' ').T
+    try:
+        tempFile = open(file, 'w+')
+        tempFile.write(html_string.format(table=df.to_html(classes='mystyle')))
+        tempFile.close()
+        print('The results are exported to {file} successfully'.format(file=os.path.abspath(file)))
+    except FileNotFoundError as fileNotFoundError:
+        print("Checkov result file \"{filename}\" not found".format(filename=fileNotFoundError.filename))
+    except TypeError as typeError:
+        print(typeError.args[0])
+
+def exportToXml(file: str, errorCheckList: Dict):
+    try:
+        tempFile = open(file, 'w+')
+        tempFile.write(json2xml.Json2xml(errorCheckList).to_xml())
+        tempFile.close()
+        print('The results are exported to {file} successfully'.format(file=os.path.abspath(file)))
+    except FileNotFoundError as fileNotFoundError:
+        print("Checkov result file \"{filename}\" not found".format(filename=fileNotFoundError.filename))
+    except TypeError as typeError:
+        print(typeError.args[0])
+        
 def exportToJson(file: str, errorCheckList: Dict):
     try:
         tempFile = open(file, 'w+')
@@ -105,4 +143,6 @@ def exportToJson(file: str, errorCheckList: Dict):
     except TypeError as typeError:
         print(typeError.args[0])
 
-printToCliAsJson(extendErrorCheckList(getErrorCheckList('result.json')))
+#printToCliAsJson(extendErrorCheckList(getErrorCheckList('result.json')))
+#exportToXml("result.xml", extendErrorCheckList(getErrorCheckList('result.json')))
+exportToHtmlTable("table.html", extendErrorCheckList(getErrorCheckList('result.json')))
