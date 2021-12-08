@@ -1,17 +1,14 @@
 import os
-from types import resolve_bases
 from typing import Dict, List
-from numpy import e
 import requests
 from bs4 import BeautifulSoup
 import json
 from requests.models import MissingSchema
 from json2xml import json2xml
 import pandas as pd
-from pretty_html_table import build_table
 
 def findText(content: str, element: str, attributes: Dict) -> str:
-    result = BeautifulSoup(content, 'html.parser').find(element, attrs=attributes).text
+    result = BeautifulSoup(content, 'html.parser').find(element, attributes).text
     return result
 
 def toDictionary(list: List) -> Dict:
@@ -50,7 +47,7 @@ def getCheckInfo(urlPage: str) -> Dict:
     checkInfo[getCheckovID(content)] = {
         'description': getErrorDescription(content),
         'severity': getSeverity(content),
-        'correctCode': getCorrectCode(content).replace('\\n','')
+        'correctCode': getCorrectCode(content)
     }
     return checkInfo
 
@@ -70,7 +67,6 @@ def getErrorCheckList(file: str) -> Dict:
         data = openJsonFile(file)
         for failedCheck in data['results']['failed_checks']:
             temp[failedCheck['check_id']]={
-                'check_id':         failedCheck['check_id'],
                 'check_name':       failedCheck['check_name'],
                 'evaluated_keys':   '\n'.join(failedCheck['check_result']['evaluated_keys']),
                 'file_path':        failedCheck['file_path'],
@@ -97,23 +93,27 @@ def printToCliAsJson(errorCheckList: Dict):
 
 def exportToHtmlTable(file: str, errorCheckList: Dict):
     html_string = '''
-        <html>
-        <head><title>Failed Checkov Checks</title></head>
-        <link rel="stylesheet" type="text/css" href="df_style.css"/>
-        <body>
-            {table}
-        </body>
-        </html>
-        '''
+    <html>
+    <head>
+    <title>Failed Checkov Checks</title>
+    <meta content="text/html; charset=UTF-8" http-equiv="Content-Type"/>
+    </head>
+    <link rel="stylesheet" type="text/css" href="df_style.css"/>
+    <body>
+        {table}
+    </body>
+    </html>
+    '''
 
-    df = pd.DataFrame.from_dict({key: errorCheckList[key]
+    df = pd.DataFrame.from_dict({key : errorCheckList[key]
                                   for key in errorCheckList.keys()
-                                  })
+                                  }, orient='index')
     pd.set_option('colheader_justify', 'center')
-    df = df.fillna(' ').T
+    df = df.replace('\n', '<br>', regex=True)
+    df = df.fillna(' ')
     try:
         tempFile = open(file, 'w+')
-        tempFile.write(html_string.format(table=df.to_html(classes='mystyle')))
+        tempFile.write(html_string.format(table=df.to_html(classes='mystyle',escape=False)))
         tempFile.close()
         print('The results are exported to {file} successfully'.format(file=os.path.abspath(file)))
     except FileNotFoundError as fileNotFoundError:
@@ -143,6 +143,4 @@ def exportToJson(file: str, errorCheckList: Dict):
     except TypeError as typeError:
         print(typeError.args[0])
 
-#printToCliAsJson(extendErrorCheckList(getErrorCheckList('result.json')))
-#exportToXml("result.xml", extendErrorCheckList(getErrorCheckList('result.json')))
 exportToHtmlTable("table.html", extendErrorCheckList(getErrorCheckList('result.json')))
