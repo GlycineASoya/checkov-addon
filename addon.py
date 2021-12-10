@@ -1,11 +1,22 @@
 import os
-from typing import Dict, List
+from typing import Any, Dict, List
 import requests
 from bs4 import BeautifulSoup
 import json
 from requests.models import MissingSchema
 from json2xml import json2xml
 import pandas as pd
+
+def writeToFile(file: str, data: str):
+    try:
+        tempFile = open(file, 'w+')
+        tempFile.write(data)
+        tempFile.close()
+        print('The results are exported to {file} successfully'.format(file=os.path.abspath(file)))
+    except FileNotFoundError as fileNotFoundError:
+        print("Checkov result file \"{filename}\" not found".format(filename=fileNotFoundError.filename))
+    except TypeError as typeError:
+        print(typeError.args[0])
 
 def findText(content: str, element: str, attributes: Dict) -> str:
     result = BeautifulSoup(content, 'html.parser').find(element, attributes).text
@@ -78,6 +89,7 @@ def getErrorCheckList(file: str) -> Dict:
                 checkInfo = temp
             else:
                 checkInfo.update(temp)
+            print("{check_id} from {src_file} processed".format(check_id=failedCheck['check_id'], src_file=file))
         return checkInfo
     except KeyError as keyError:
         print("The key \"{key}\" is not in the json file content".format(key=keyError.args[0]))
@@ -86,6 +98,7 @@ def extendErrorCheckList(errorCheckList: Dict) -> Dict:
     for errorCheckID, errorCheckDetailList in errorCheckList.items():
         guidlineDetails = getCheckInfo(errorCheckDetailList['guideline'])[errorCheckID]
         errorCheckList[errorCheckID].update(guidlineDetails)
+        print("{check_id} updated".format(check_id=errorCheckID))
     return errorCheckList
 
 def printToCliAsJson(errorCheckList: Dict):
@@ -98,7 +111,7 @@ def exportToHtmlTable(file: str, errorCheckList: Dict):
     <title>Failed Checkov Checks</title>
     <meta content="text/html; charset=UTF-8" http-equiv="Content-Type"/>
     </head>
-    <link rel="stylesheet" type="text/css" href="df_style.css"/>
+    <link rel="stylesheet" type="text/css" href="{css_path}"/>
     <body>
         {table}
     </body>
@@ -111,36 +124,17 @@ def exportToHtmlTable(file: str, errorCheckList: Dict):
     pd.set_option('colheader_justify', 'center')
     df = df.replace('\n', '<br>', regex=True)
     df = df.fillna(' ')
-    try:
-        tempFile = open(file, 'w+')
-        tempFile.write(html_string.format(table=df.to_html(classes='mystyle',escape=False)))
-        tempFile.close()
-        print('The results are exported to {file} successfully'.format(file=os.path.abspath(file)))
-    except FileNotFoundError as fileNotFoundError:
-        print("Checkov result file \"{filename}\" not found".format(filename=fileNotFoundError.filename))
-    except TypeError as typeError:
-        print(typeError.args[0])
+    data = html_string.format(css_path=os.path.abspath(os.getcwd())+"/df_style.css", table=df.to_html(classes='mystyle',escape=False))
+    writeToFile(file, data)
 
 def exportToXml(file: str, errorCheckList: Dict):
-    try:
-        tempFile = open(file, 'w+')
-        tempFile.write(json2xml.Json2xml(errorCheckList).to_xml())
-        tempFile.close()
-        print('The results are exported to {file} successfully'.format(file=os.path.abspath(file)))
-    except FileNotFoundError as fileNotFoundError:
-        print("Checkov result file \"{filename}\" not found".format(filename=fileNotFoundError.filename))
-    except TypeError as typeError:
-        print(typeError.args[0])
+    data = json2xml.Json2xml(errorCheckList).to_xml()
+    writeToFile(file, data)
         
 def exportToJson(file: str, errorCheckList: Dict):
-    try:
-        tempFile = open(file, 'w+')
-        json.dump(obj=errorCheckList, indent=4, fp=tempFile)
-        tempFile.close()
-        print('The results are exported to {file} successfully'.format(file=os.path.abspath(file)))
-    except FileNotFoundError as fileNotFoundError:
-        print("Checkov result file \"{filename}\" not found".format(filename=fileNotFoundError.filename))
-    except TypeError as typeError:
-        print(typeError.args[0])
+    data = json.dumps(obj=errorCheckList, indent=4)
+    writeToFile(file, data)
 
-exportToHtmlTable("table.html", extendErrorCheckList(getErrorCheckList('result.json')))
+
+exportToJson("table.json", extendErrorCheckList(getErrorCheckList('result.json')))
+exportToHtmlTable("htmls/table.html", extendErrorCheckList(getErrorCheckList('result.json')))
