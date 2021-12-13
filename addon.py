@@ -1,11 +1,7 @@
 import os
-<<<<<<< HEAD
 from typing import Any, Dict, List
-=======
 import sys
 import argparse
-from typing import Dict, List
->>>>>>> major/main_menu
 import requests
 from bs4 import BeautifulSoup
 import json
@@ -134,7 +130,7 @@ def exportToHtmlTable(errorCheckList: Dict, file: str):
     pd.set_option('colheader_justify', 'center')
     df = df.replace('\n', '<br>', regex=True)
     df = df.fillna(' ')
-    data = html_string.format(css_path=os.path.abspath(os.getcwd())+"css/df_style.css", table=df.to_html(classes='mystyle',escape=False))
+    data = html_string.format(css_path=os.path.abspath(os.getcwd())+"/css/df_style.css", table=df.to_html(classes='mystyle',escape=False))
     writeToFile(file, data)
 
 def exportToXml(file: str, errorCheckList: Dict):
