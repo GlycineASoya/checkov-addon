@@ -1,5 +1,11 @@
 import os
+<<<<<<< HEAD
 from typing import Any, Dict, List
+=======
+import sys
+import argparse
+from typing import Dict, List
+>>>>>>> major/main_menu
 import requests
 from bs4 import BeautifulSoup
 import json
@@ -70,6 +76,10 @@ def openJsonFile(file: str):
         return content
     except FileNotFoundError as fileNotFoundError:
         print("Checkov result file \"{filename}\" not found".format(filename=fileNotFoundError.filename))
+        sys.exit(-1)
+    except TypeError as typeError:
+        print("Checkov result file cannot be open as the file name has improper type. Check the argument passed to the \"openJsonFile\" function")
+        sys.exit(-1)
 
 def getErrorCheckList(file: str) -> Dict:
     checkInfo = {}
@@ -104,7 +114,7 @@ def extendErrorCheckList(errorCheckList: Dict) -> Dict:
 def printToCliAsJson(errorCheckList: Dict):
     print(json.dumps(obj=errorCheckList, indent=4))
 
-def exportToHtmlTable(file: str, errorCheckList: Dict):
+def exportToHtmlTable(errorCheckList: Dict, file: str):
     html_string = '''
     <html>
     <head>
@@ -124,7 +134,7 @@ def exportToHtmlTable(file: str, errorCheckList: Dict):
     pd.set_option('colheader_justify', 'center')
     df = df.replace('\n', '<br>', regex=True)
     df = df.fillna(' ')
-    data = html_string.format(css_path=os.path.abspath(os.getcwd())+"/df_style.css", table=df.to_html(classes='mystyle',escape=False))
+    data = html_string.format(css_path=os.path.abspath(os.getcwd())+"css/df_style.css", table=df.to_html(classes='mystyle',escape=False))
     writeToFile(file, data)
 
 def exportToXml(file: str, errorCheckList: Dict):
@@ -135,6 +145,29 @@ def exportToJson(file: str, errorCheckList: Dict):
     data = json.dumps(obj=errorCheckList, indent=4)
     writeToFile(file, data)
 
+def main():
+    if __name__ == "__main__":
+        parser = argparse.ArgumentParser()
+        parser.add_argument("-o", "--output", help='''returned output one of the following: cli|html|json|xml. Default: cli''', type=str)
+        parser.add_argument("-s", "--source", help='''specify the source data file. Default: ./result.json''', type=str)
+        parser.add_argument("-d", "--destination", help='''specify the destination data file. Default: if --output specified, ./output.<--output>''', type=str)
+        args = parser.parse_args()
+        
+        sourceFile = "result.json" if args.source is None else args.source
+        errorCheckList = extendErrorCheckList(getErrorCheckList(file=sourceFile))
+        
+        if args.output == "cli":
+            printToCliAsJson()
+        elif args.output == "html":
+            destinationFile = "output."+args.output if args.source is None else args.source
+            exportToHtmlTable(errorCheckList=errorCheckList, file=destinationFile)
+        elif args.output == "json":
+            destinationFile = "output."+args.output if args.source is None else args.source
+            exportToJson(errorCheckList=errorCheckList, file=destinationFile)
+        elif args.output == "xml":
+            destinationFile = "output."+args.output if args.source is None else args.source
+            exportToXml(file=destinationFile, errorCheckList=errorCheckList)
+        else:
+            printToCliAsJson(errorCheckList=errorCheckList)
 
-exportToJson("table.json", extendErrorCheckList(getErrorCheckList('result.json')))
-exportToHtmlTable("htmls/table.html", extendErrorCheckList(getErrorCheckList('result.json')))
+main()
