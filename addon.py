@@ -5,18 +5,20 @@ import argparse
 import requests
 from bs4 import BeautifulSoup
 import json
+from pathlib import Path
 from requests.models import MissingSchema
 from json2xml import json2xml
 import pandas as pd
 
 def writeToFile(file: str, data: str):
     try:
+        Path(os.path.dirname(file)).mkdir(parents=True, exist_ok=True)
         tempFile = open(file, 'w+')
         tempFile.write(data)
         tempFile.close()
         print('The results are exported to {file} successfully'.format(file=os.path.abspath(file)))
     except FileNotFoundError as fileNotFoundError:
-        print("Checkov result file \"{filename}\" not found".format(filename=fileNotFoundError.filename))
+        print("Checkov output file \"{filename}\" cannot be created".format(filename=fileNotFoundError.filename))
     except TypeError as typeError:
         print(typeError.args[0])
 
@@ -149,19 +151,19 @@ def main():
         parser.add_argument("-d", "--destination", help='''specify the destination data file. Default: if --output specified, ./output.<--output>''', type=str)
         args = parser.parse_args()
         
-        sourceFile = "result.json" if args.source is None else args.source
+        sourceFile = "result.json" if args.source is None else (args.source if os.path.isabs(args.source) else os.getcwd()+'/'+args.source)
         errorCheckList = extendErrorCheckList(getErrorCheckList(file=sourceFile))
         
         if args.output == "cli":
             printToCliAsJson()
         elif args.output == "html":
-            destinationFile = "output."+args.output if args.source is None else args.source
+            destinationFile = "output."+args.output if args.destination is None else (args.destination if os.path.isabs(args.destination) else os.getcwd()+'/'+args.destination)
             exportToHtmlTable(errorCheckList=errorCheckList, file=destinationFile)
         elif args.output == "json":
-            destinationFile = "output."+args.output if args.source is None else args.source
+            destinationFile = "output."+args.output if args.destination is None else (args.destination if os.path.isabs(args.destination) else os.getcwd()+'/'+args.destination)
             exportToJson(errorCheckList=errorCheckList, file=destinationFile)
         elif args.output == "xml":
-            destinationFile = "output."+args.output if args.source is None else args.source
+            destinationFile = "output."+args.output if args.destination is None else (args.destination if os.path.isabs(args.destination) else os.getcwd()+'/'+args.destination)
             exportToXml(file=destinationFile, errorCheckList=errorCheckList)
         else:
             printToCliAsJson(errorCheckList=errorCheckList)
