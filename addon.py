@@ -3,12 +3,13 @@ from typing import Any, Dict, List
 import sys
 import argparse
 import requests
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, NavigableString, Tag
 import json
 from pathlib import Path
 from requests.models import MissingSchema
 from json2xml import json2xml
 import pandas as pd
+import re
 
 def writeToFile(file: str, data: str):
     try:
@@ -22,8 +23,12 @@ def writeToFile(file: str, data: str):
     except TypeError as typeError:
         print(typeError.args[0])
 
-def findText(content: str, element: str, attributes: Dict) -> str:
+def findText(content: str, element: str, attributes: Dict):
     result = BeautifulSoup(content, 'html.parser').find(element, attributes).text
+    return result
+
+def findAll(content: str, element: str):
+    result = BeautifulSoup(content, 'html.parser').find_all(element)
     return result
 
 def toDictionary(list: List) -> Dict:
@@ -33,21 +38,58 @@ def toDictionary(list: List) -> Dict:
         d[key.strip()] = value.strip()
     return d
 
-def getCorrectCode(content: str) -> str:
-    correctCode = findText(content, 'code', {'class': 'rdmd-code lang-go theme-light'})
+def getFixValue(nextNode) -> str:
+    value = ''
+    while nextNode is not None and nextNode.name != 'h1':
+        if isinstance(nextNode, Tag) and nextNode.text != '':
+            if nextNode.name == 'div':
+                value = value + next(iter([content.text for content in nextNode.contents for contentClass in content['class'] if 'inner' in contentClass])) + '\n'
+            else:
+                value = value + nextNode.text + '\n'
+                #print(nextNode.text)
+        nextNode = nextNode.nextSibling
+    return value
+
+def getFixRuntime(content) -> str:
+    correctCode = ''
+    for header in content:
+        nextNode = header
+        if nextNode.name == 'h1' and re.compile('Fix.{1,3}R.{1,2}time').match(nextNode.text):
+            correctCode = getFixValue(nextNode = nextNode.nextSibling)
+    return correctCode
+
+def getFixBuildtime(content) -> str:
+    correctCode = ''
+    for header in content:
+        nextNode = header
+        if nextNode.name == 'h1' and re.compile('Fix.{1,3}B.{1,4}time').match(nextNode.text):
+            correctCode = getFixValue(nextNode = nextNode.nextSibling)
     return correctCode
 
 def getErrorDescription(content: str) -> str:
-    checkovID = toDictionary(findText(content, 'div', {'class': 'markdown-body'}).split('\n'))['Error']
-    return checkovID
+    contentDict = toDictionary(content.split('\n'))
+    errorDescription = contentDict['Error'] if 'Error' in contentDict.keys() else ''
+    return errorDescription
 
 def getCheckovID(content: str) -> str:
-    checkovID = toDictionary(findText(content, 'div', {'class': 'markdown-body'}).split('\n'))['Checkov Check ID']
+    contentDict = toDictionary(content.split('\n'))
+    checkovID = contentDict['Checkov Check ID'] if 'Checkov Check ID' in contentDict.keys() else ''
     return checkovID
 
 def getSeverity(content: str) -> str:
-    severity = toDictionary(findText(content, 'div', {'class': 'markdown-body'}).split('\n'))['Severity']
+    contentDict = toDictionary(content.split('\n'))
+    severity = contentDict['Severity'] if 'Severity' in contentDict.keys() else ''
     return severity
+    
+def getPrismaCloudSeverity(content: str) -> str:
+    contentDict = toDictionary(content.split('\n'))
+    prismaCloudSeverity = contentDict['prismaCloudSeverity'] if 'prismaCloudSeverity' in contentDict.keys() else ''
+    return prismaCloudSeverity
+
+def getBridgecrewSeverity(content: str) -> str:
+    contentDict = toDictionary(content.split('\n'))
+    bridgecrewSeverity = contentDict['bridgecrewSeverity'] if 'bridgecrewSeverity' in contentDict.keys() else ''
+    return bridgecrewSeverity
 
 def getPageContent(urlPage: str) -> str:
     try:
@@ -56,15 +98,20 @@ def getPageContent(urlPage: str) -> str:
     except MissingSchema as missingSchema:
         print(missingSchema.args[0])
 
-def getCheckInfo(urlPage: str) -> Dict:
+def getGuidelineInfo(urlPage: str) -> Dict:
     content = getPageContent(urlPage)
-    checkInfo = {}
-    checkInfo[getCheckovID(content)] = {
-        'description': getErrorDescription(content),
-        'severity': getSeverity(content),
-        'correctCode': getCorrectCode(content)
+    introductionContent = findText(content, 'div', {'class': 'markdown-body'})
+    fixContent = findAll(content, 'h1')
+    guidelineInfo = {}
+    guidelineInfo[getCheckovID(introductionContent)] = {
+        'description': getErrorDescription(introductionContent),
+        'severity': getSeverity(introductionContent),
+        'prismaCloudSeverity': getPrismaCloudSeverity(introductionContent),
+        'bridgecrewSeverity': getBridgecrewSeverity(introductionContent),
+        'fixRuntime': getFixRuntime(fixContent),
+        'fixBuiltime': getFixBuildtime(fixContent)
     }
-    return checkInfo
+    return guidelineInfo
 
 def openJsonFile(file: str):
     try:
@@ -104,35 +151,53 @@ def getErrorCheckList(file: str) -> Dict:
 
 def extendErrorCheckList(errorCheckList: Dict) -> Dict:
     for errorCheckID, errorCheckDetailList in errorCheckList.items():
-        guidlineDetails = getCheckInfo(errorCheckDetailList['guideline'])[errorCheckID]
-        errorCheckList[errorCheckID].update(guidlineDetails)
-        print("{check_id} updated".format(check_id=errorCheckID))
+        if errorCheckDetailList['guideline'] is None:
+            print("{check_id} doesn't have guideline".format(check_id=errorCheckID))
+        else:
+            guidlineDetails = getGuidelineInfo(errorCheckDetailList['guideline'])[errorCheckID]
+            errorCheckList[errorCheckID].update(guidlineDetails)
+            print("{check_id} updated".format(check_id=errorCheckID))
     return errorCheckList
 
 def printToCliAsJson(errorCheckList: Dict):
     print(json.dumps(obj=errorCheckList, indent=4))
 
 def exportToHtmlTable(errorCheckList: Dict, file: str):
-    html_string = '''
-    <html>
-    <head>
-    <title>Failed Checkov Checks</title>
-    <meta content="text/html; charset=UTF-8" http-equiv="Content-Type"/>
-    </head>
-    <link rel="stylesheet" type="text/css" href="{css_path}"/>
-    <body>
-        {table}
-    </body>
-    </html>
-    '''
-
+    main_props = [
+        ('font-size', '10pt'),
+        ('font-family', 'Arial'),
+        ('border-collapse', 'collapse'),
+        ('table-layout', 'auto'),
+        ('width', '100%'),
+        ('white-space', 'pre-line')
+    ]
+    
+    tr_hover_props = [
+        ('background', 'silver'),
+        ('cursor', 'text')
+    ]
+    
+    th_td_props = [
+        ('border-collapse', 'collapse'), 
+        ('border', '1px solid black'),
+        ('padding', '5px')
+    ]
+    
+    styles = [
+        dict(selector='', props=main_props),
+        dict(selector='th', props=th_td_props),
+        dict(selector='td', props=th_td_props),
+        dict(selector='tr:hover', props=tr_hover_props)
+    ]
+    
     df = pd.DataFrame.from_dict({key : errorCheckList[key]
                                   for key in errorCheckList.keys()
                                   }, orient='index')
     pd.set_option('colheader_justify', 'center')
     df = df.replace('\n', '<br>', regex=True)
     df = df.fillna(' ')
-    data = html_string.format(css_path=os.path.abspath(os.getcwd())+"/css/df_style.css", table=df.to_html(classes='mystyle',escape=False))
+    df = df.style.set_table_styles(styles)
+    data = df.to_html()
     writeToFile(file, data)
 
 def exportToXml(file: str, errorCheckList: Dict):
