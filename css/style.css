@@ -1,0 +1,61 @@
+.mystyle {
+    font-size: 10pt;
+    font-family: Arial;
+    border-collapse: collapse;
+    table-layout: auto;
+    width: 100%;
+    white-space: pre-line';
+  }
+
+.tr:hover {
+    cursor: text;
+}
+    
+.td {
+    border-collapse: collapse; 
+    border: 1px solid black;
+    padding: 5px;
+}
+.th {
+    border-collapse: collapse; 
+    border: 1px solid black;
+    padding: 5px;
+}
+
+.spoilercheck {
+    visibility: hidden;
+    display: none;
+}
+    
+.spoilerlabel {
+    color: blue;
+    font-size: 1em;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.spoilerlabel:hover {
+    background-color: lightgray;
+}
+    
+.spoilerdiv {
+    background-color: lightgray;
+    padding: 1px;
+    height: 0;
+    font-size: 0;
+    margin-top: 10px;
+    transition: 500ms;
+    opacity: 0;
+    border-radius: 15px;
+}
+
+.spoilercheck:checked ~ .spoilerdiv {
+    height: auto;
+    font-size: 1em;
+    opacity: 1;
+}
+    
+.spoilercheck:checked ~ .spoilerlabel {
+    color: black;
+    font-weight: normal;
+}
