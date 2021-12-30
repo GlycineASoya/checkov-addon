@@ -71,10 +71,6 @@ def getFixValue(nextNode) -> str:
             value = value + label.format(uuid=uuid.uuid4(), text=nextNode.text)
             isNext = False
         else:
-            
-            
-            
-            
             value = value + div.format(text=temp)
         value = re.sub('\<button.*?\/button\>', '', value)
     return value
