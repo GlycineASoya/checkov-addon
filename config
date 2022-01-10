@@ -1,0 +1,11 @@
+branch: master
+check:
+- <Check_to_include>
+directory:
+download-external-modules: <external_tf_module>,<external_tf_module>
+evaluate-variables: true
+framework: terraform
+output: json
+quiet: true
+skip-check:
+- <Check_to_exclude>
